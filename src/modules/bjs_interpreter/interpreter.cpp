@@ -108,6 +108,9 @@ void interpreterHandler(void *pvParameters) {
     JS_FreeContext(ctx);
     free(mem_buf);
 
+    // Drop any promiscuous capture state a script left behind.
+    wifi_js_cleanup();
+
     printMemoryUsage("deinit interpreter");
 
     interpreter_state = -1;

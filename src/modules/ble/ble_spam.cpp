@@ -2256,3 +2256,46 @@ static void bleSpamMenuUi() {
 }
 
 void spamMenu() { bleSpamMenuUi(); }
+
+// ============================================================================
+// Headless (UI-free) BLE spam drivers used by the bjs interpreter bindings.
+// ============================================================================
+
+int headlessBleSpamModeCount() { return bleSpamGetAttackOptionCount(); }
+
+const char *headlessBleSpamModeName(int index) {
+    int count = bleSpamGetAttackOptionCount();
+    if (index < 0 || index >= count) return "";
+    return BLE_SPAM_ATTACK_OPTIONS[index].label;
+}
+
+int headlessBleSpam(uint8_t attackIndex, uint32_t durationMs) {
+    int count = bleSpamGetAttackOptionCount();
+    if (count <= 0) return 0;
+    if (attackIndex >= (uint8_t)count) attackIndex = 0;
+    if (durationMs == 0) durationMs = 1000;
+    if (durationMs > 300000) durationMs = 300000; // 5 minute safety cap
+
+    BleSpamSelection selection;
+    selection.attack_type = bleSpamGetAttackTypeByIndex((int)attackIndex);
+    selection.device_index = 0;
+
+    BleSpamConfig config = bleSpamLoadConfig();
+
+    BleSpamRunState runState;
+    uint8_t initialMac[6];
+    bool haveMac = bleSpamGetNextMac(runState, config.mac_rand_mode, initialMac);
+    bleSpamInitAdvertiser(runState, config, haveMac ? initialMac : nullptr, true);
+
+    uint32_t start = millis();
+    while ((uint32_t)(millis() - start) < durationMs) {
+        bleSpamSendTick(runState, config, selection);
+        bleSpamUpdateStats(runState);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+        if (check(EscPress)) break;
+    }
+
+    int sent = (int)runState.sent_count;
+    bleSpamDeinitAdvertiser();
+    return sent;
+}

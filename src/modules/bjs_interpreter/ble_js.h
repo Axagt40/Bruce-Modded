@@ -8,6 +8,10 @@ extern "C" {
 JSValue native_bleScan(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 JSValue native_bleAdvertise(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 JSValue native_bleStopAdvertise(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+
+// BLE spam bindings (headless, time-bounded)
+JSValue native_bleSpam(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+JSValue native_bleSpamModes(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 }
 
 #endif

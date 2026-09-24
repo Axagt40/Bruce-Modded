@@ -114,7 +114,7 @@ JSValue native_dialogPickFile(JSContext *ctx, JSValue *this_val, int argc, JSVal
 JSValue native_dialogChoice(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
     // usage: dialogChoice(choices : string[] | [key: string, value: string][] | {[key: string]: string})
     // returns: string or empty string
-    const char *result = "";
+    String result = "";
     if (argc < 1 || !JS_IsObject(ctx, argv[0])) {
         return JS_ThrowTypeError(ctx, "dialogChoice: Choice argument must be object or array.");
     }
@@ -129,9 +129,11 @@ JSValue native_dialogChoice(JSContext *ctx, JSValue *this_val, int argc, JSValue
             JSValue jsvChoice = JS_GetPropertyUint32(ctx, argv[0], i);
 
             if (JS_IsString(ctx, jsvChoice)) {
-                JSCStringBuf sb;
-                const char *s = JS_ToCString(ctx, jsvChoice, &sb);
-                options.push_back({s, [&result, s]() { result = s; }});
+                // The label is copied into Option (which owns a String), but the
+                // lambda runs later, after the whole menu interaction, so it must
+                // capture an owning copy - not a pointer into the movable JS heap.
+                String s = js_tocstring_copy(ctx, jsvChoice);
+                options.push_back({s.c_str(), [&result, s]() { result = s; }});
             } else if (JS_GetClassID(ctx, jsvChoice) == JS_CLASS_ARRAY) {
                 /* element is expected to be [key, value] */
                 JSValue jsvInnerArrayLength = JS_GetPropertyStr(ctx, jsvChoice, "length");
@@ -143,10 +145,9 @@ JSValue native_dialogChoice(JSContext *ctx, JSValue *this_val, int argc, JSValue
                     JSValue jsvKey = JS_GetPropertyUint32(ctx, jsvChoice, 0);
                     JSValue jsvValue = JS_GetPropertyUint32(ctx, jsvChoice, 1);
                     if (JS_IsString(ctx, jsvKey) && JS_IsString(ctx, jsvValue)) {
-                        JSCStringBuf sb;
-                        const char *key = JS_ToCString(ctx, jsvKey, &sb);
-                        const char *value = JS_ToCString(ctx, jsvValue, &sb);
-                        options.push_back({key, [value, &result]() { result = value; }});
+                        String key = js_tocstring_copy(ctx, jsvKey);
+                        String value = js_tocstring_copy(ctx, jsvValue);
+                        options.push_back({key.c_str(), [value, &result]() { result = value; }});
                     }
                 }
             }
@@ -157,15 +158,19 @@ JSValue native_dialogChoice(JSContext *ctx, JSValue *this_val, int argc, JSValue
         uint32_t prop_count = 0;
         for (uint32_t index = 0;; ++index) {
             log_d("index: %d", index);
-            const char *key = JS_GetOwnPropertyByIndex(ctx, index, &prop_count, argv[0]);
-            if (key == NULL) break;
-            log_d("key: %s", key);
+            // JS_GetOwnPropertyByIndex() returns JS_ToCString() over a buffer that
+            // is local to itself, so for a short name the pointer is already
+            // dangling on return. Copy before the next engine call, and note the
+            // lambda needs an owning copy because it runs much later.
+            const char *keyRaw = JS_GetOwnPropertyByIndex(ctx, index, &prop_count, argv[0]);
+            if (keyRaw == NULL) break;
+            String key = keyRaw;
+            log_d("key: %s", key.c_str());
             log_d("prop_count: %d", prop_count);
-            JSValue jsvVal = JS_GetPropertyStr(ctx, argv[0], key);
+            JSValue jsvVal = JS_GetPropertyStr(ctx, argv[0], key.c_str());
             if (JS_IsString(ctx, jsvVal)) {
-                JSCStringBuf sb;
-                const char *val = JS_ToCString(ctx, jsvVal, &sb);
-                options.push_back({key, [val, &result]() { result = val; }});
+                String val = js_tocstring_copy(ctx, jsvVal);
+                options.push_back({key.c_str(), [val, &result]() { result = val; }});
             }
         }
     }
@@ -173,7 +178,7 @@ JSValue native_dialogChoice(JSContext *ctx, JSValue *this_val, int argc, JSValue
     loopOptions(options, MENU_TYPE_REGULAR, "", 0, true);
     options.clear();
 
-    return JS_NewString(ctx, result);
+    return JS_NewString(ctx, result.c_str());
 }
 
 JSValue native_dialogViewFile(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {

@@ -29,6 +29,12 @@ js_get_path_from_params(JSContext *ctx, JSValue *argv, bool checkIfexist = true,
 
 JSValue js_value_from_json_variant(JSContext *ctx, JsonVariantConst value);
 
+/* mquickjs relocates its heap on allocation and only tracks the roots it knows
+ * about, so the pointer JS_ToCString() hands back may be invalidated by the very
+ * next JS_New or JS_SetProperty call. Copy the bytes out immediately instead of
+ * holding the borrowed pointer across further engine calls. */
+String js_tocstring_copy(JSContext *ctx, JSValue val);
+
 void internal_print(
     JSContext *ctx, JSValue *this_val, int argc, JSValue *argv, uint8_t printTft, uint8_t newLine
 );

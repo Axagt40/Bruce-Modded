@@ -18,6 +18,9 @@ JSValue native_storageMkdir(JSContext *ctx, JSValue *this_val, int argc, JSValue
 JSValue native_storageRmdir(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 JSValue native_storageSpaceLittleFS(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 JSValue native_storageSpaceSDCard(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+JSValue native_storageExists(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+JSValue native_storageSize(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+JSValue native_storageCopy(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 }
 
 #endif

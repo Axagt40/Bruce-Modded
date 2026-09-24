@@ -63,21 +63,29 @@ JSValue native_rfidRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     if (jsonResult.isEmpty()) { return JS_NULL; }
 
     // Create a JS object from the fields
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     // Extract fields from the interface
     RFIDInterface *rfid = tagReader->getRFIDInterface();
     if (rfid) {
-        JS_SetPropertyStr(ctx, obj, "uid", JS_NewString(ctx, rfid->printableUID.uid.c_str()));
-        JS_SetPropertyStr(ctx, obj, "type", JS_NewString(ctx, rfid->printableUID.picc_type.c_str()));
-        JS_SetPropertyStr(ctx, obj, "sak", JS_NewString(ctx, rfid->printableUID.sak.c_str()));
-        JS_SetPropertyStr(ctx, obj, "atqa", JS_NewString(ctx, rfid->printableUID.atqa.c_str()));
-        JS_SetPropertyStr(ctx, obj, "bcc", JS_NewString(ctx, rfid->printableUID.bcc.c_str()));
-        JS_SetPropertyStr(ctx, obj, "pages", JS_NewString(ctx, rfid->strAllPages.c_str()));
-        JS_SetPropertyStr(ctx, obj, "totalPages", JS_NewInt32(ctx, rfid->totalPages));
+        JS_SetPropertyStr(ctx, *obj, "uid", JS_NewString(ctx, rfid->printableUID.uid.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "type", JS_NewString(ctx, rfid->printableUID.picc_type.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "sak", JS_NewString(ctx, rfid->printableUID.sak.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "atqa", JS_NewString(ctx, rfid->printableUID.atqa.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "bcc", JS_NewString(ctx, rfid->printableUID.bcc.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "pages", JS_NewString(ctx, rfid->strAllPages.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "totalPages", JS_NewInt32(ctx, rfid->totalPages));
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_rfidReadUID(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -106,28 +114,36 @@ JSValue native_rfidWrite(JSContext *ctx, JSValue *this_val, int argc, JSValue *a
     int result = tagReader->write_tag_headless(timeout);
 
     // Create return object
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     switch (result) {
         case RFIDInterface::SUCCESS:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Tag written successfully"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Tag written successfully"));
             break;
         case RFIDInterface::TAG_NOT_PRESENT:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "No tag present"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "No tag present"));
             break;
         case RFIDInterface::TAG_NOT_MATCH:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Tag types do not match"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Tag types do not match"));
             break;
         default:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Error writing data to tag"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Error writing data to tag"));
             break;
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_rfidSave(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -146,19 +162,27 @@ JSValue native_rfidSave(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     String result = tagReader->save_file_headless(String(filename));
 
     // Create return object
-    JSValue obj = JS_NewObject(ctx);
-
-    if (!result.isEmpty()) {
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "File saved successfully"));
-        JS_SetPropertyStr(ctx, obj, "filepath", JS_NewString(ctx, result.c_str()));
-    } else {
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Error saving file"));
-        JS_SetPropertyStr(ctx, obj, "filepath", JS_NewString(ctx, ""));
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
     }
 
-    return obj;
+    if (!result.isEmpty()) {
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "File saved successfully"));
+        JS_SetPropertyStr(ctx, *obj, "filepath", JS_NewString(ctx, result.c_str()));
+    } else {
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Error saving file"));
+        JS_SetPropertyStr(ctx, *obj, "filepath", JS_NewString(ctx, ""));
+    }
+
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_rfidLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -179,21 +203,29 @@ JSValue native_rfidLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     if (!success) { return JS_NULL; }
 
     // Create a JS object from the loaded data
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     // Extract fields from the interface
     RFIDInterface *rfid = tagReader->getRFIDInterface();
     if (rfid) {
-        JS_SetPropertyStr(ctx, obj, "uid", JS_NewString(ctx, rfid->printableUID.uid.c_str()));
-        JS_SetPropertyStr(ctx, obj, "type", JS_NewString(ctx, rfid->printableUID.picc_type.c_str()));
-        JS_SetPropertyStr(ctx, obj, "sak", JS_NewString(ctx, rfid->printableUID.sak.c_str()));
-        JS_SetPropertyStr(ctx, obj, "atqa", JS_NewString(ctx, rfid->printableUID.atqa.c_str()));
-        JS_SetPropertyStr(ctx, obj, "bcc", JS_NewString(ctx, rfid->printableUID.bcc.c_str()));
-        JS_SetPropertyStr(ctx, obj, "pages", JS_NewString(ctx, rfid->strAllPages.c_str()));
-        JS_SetPropertyStr(ctx, obj, "totalPages", JS_NewInt32(ctx, rfid->totalPages));
+        JS_SetPropertyStr(ctx, *obj, "uid", JS_NewString(ctx, rfid->printableUID.uid.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "type", JS_NewString(ctx, rfid->printableUID.picc_type.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "sak", JS_NewString(ctx, rfid->printableUID.sak.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "atqa", JS_NewString(ctx, rfid->printableUID.atqa.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "bcc", JS_NewString(ctx, rfid->printableUID.bcc.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "pages", JS_NewString(ctx, rfid->strAllPages.c_str()));
+        JS_SetPropertyStr(ctx, *obj, "totalPages", JS_NewInt32(ctx, rfid->totalPages));
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_rfidClear(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -208,31 +240,55 @@ JSValue native_rfid_AddMifareKey(JSContext *ctx, JSValue *this_val, int argc, JS
     // returns: { success: boolean, message: string, key: string }
 
     if (argc < 1 || !JS_IsString(ctx, argv[0])) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Invalid parameter: key must be a string"));
-        return obj;
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Invalid parameter: key must be a string"));
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     JSCStringBuf buf;
     const char *key_str = JS_ToCString(ctx, argv[0], &buf);
     if (!key_str) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Failed to read key string"));
-        return obj;
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Failed to read key string"));
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     // Use bruceConfig instead of tagReader
     String keyStr = String(key_str);
     bruceConfig.addMifareKey(keyStr);
 
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-    JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Key processed"));
-    JS_SetPropertyStr(ctx, obj, "key", JS_NewString(ctx, keyStr.c_str()));
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+    JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Key processed"));
+    JS_SetPropertyStr(ctx, *obj, "key", JS_NewString(ctx, keyStr.c_str()));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 // ============================================================================
@@ -254,7 +310,15 @@ JSValue native_srixRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     if (jsonResult.isEmpty()) { return JS_NULL; }
 
     // Create a JS object from the fields
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     // Get UID using getUID() method
     String uid_str = "";
@@ -265,13 +329,13 @@ JSValue native_srixRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
         if (i < 7) uid_str += " ";
     }
     uid_str.toUpperCase();
-    JS_SetPropertyStr(ctx, obj, "uid", JS_NewString(ctx, uid_str.c_str()));
+    JS_SetPropertyStr(ctx, *obj, "uid", JS_NewString(ctx, uid_str.c_str()));
 
     // Blocks count
-    JS_SetPropertyStr(ctx, obj, "blocks", JS_NewInt32(ctx, 128));
+    JS_SetPropertyStr(ctx, *obj, "blocks", JS_NewInt32(ctx, 128));
 
     // Size in bytes
-    JS_SetPropertyStr(ctx, obj, "size", JS_NewInt32(ctx, 512));
+    JS_SetPropertyStr(ctx, *obj, "size", JS_NewInt32(ctx, 512));
 
     // Data as hex string using getDump() method
     String dump_str = "";
@@ -281,9 +345,9 @@ JSValue native_srixRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
         dump_str += String(dump[i], HEX);
     }
     dump_str.toUpperCase();
-    JS_SetPropertyStr(ctx, obj, "data", JS_NewString(ctx, dump_str.c_str()));
+    JS_SetPropertyStr(ctx, *obj, "data", JS_NewString(ctx, dump_str.c_str()));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_srixWrite(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -299,28 +363,36 @@ JSValue native_srixWrite(JSContext *ctx, JSValue *this_val, int argc, JSValue *a
     int result = srixReader->write_tag_headless(timeout);
 
     // Create return object
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     switch (result) {
         case 0:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Tag written successfully"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Tag written successfully"));
             break;
         case -1:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Timeout: no tag present"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Timeout: no tag present"));
             break;
         case -2:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Tag types do not match"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Tag types do not match"));
             break;
         default:
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Error writing data to tag"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Error writing data to tag"));
             break;
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_srixSave(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -339,19 +411,27 @@ JSValue native_srixSave(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     String result = srixReader->save_file_headless(String(filename));
 
     // Create return object
-    JSValue obj = JS_NewObject(ctx);
-
-    if (!result.isEmpty()) {
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "File saved successfully"));
-        JS_SetPropertyStr(ctx, obj, "filepath", JS_NewString(ctx, result.c_str()));
-    } else {
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Error saving file"));
-        JS_SetPropertyStr(ctx, obj, "filepath", JS_NewString(ctx, ""));
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
     }
 
-    return obj;
+    if (!result.isEmpty()) {
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "File saved successfully"));
+        JS_SetPropertyStr(ctx, *obj, "filepath", JS_NewString(ctx, result.c_str()));
+    } else {
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Error saving file"));
+        JS_SetPropertyStr(ctx, *obj, "filepath", JS_NewString(ctx, ""));
+    }
+
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_srixLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -372,7 +452,15 @@ JSValue native_srixLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
     if (result != 0) { return JS_NULL; }
 
     // Create a JS object from the loaded data
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     // UID using getUID()
     String uid_str = "";
@@ -383,10 +471,10 @@ JSValue native_srixLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
         if (i < 7) uid_str += " ";
     }
     uid_str.toUpperCase();
-    JS_SetPropertyStr(ctx, obj, "uid", JS_NewString(ctx, uid_str.c_str()));
+    JS_SetPropertyStr(ctx, *obj, "uid", JS_NewString(ctx, uid_str.c_str()));
 
-    JS_SetPropertyStr(ctx, obj, "blocks", JS_NewInt32(ctx, 128));
-    JS_SetPropertyStr(ctx, obj, "size", JS_NewInt32(ctx, 512));
+    JS_SetPropertyStr(ctx, *obj, "blocks", JS_NewInt32(ctx, 128));
+    JS_SetPropertyStr(ctx, *obj, "size", JS_NewInt32(ctx, 512));
 
     // Data as hex string using getDump()
     String dump_str = "";
@@ -396,9 +484,9 @@ JSValue native_srixLoad(JSContext *ctx, JSValue *this_val, int argc, JSValue *ar
         dump_str += String(dump[i], HEX);
     }
     dump_str.toUpperCase();
-    JS_SetPropertyStr(ctx, obj, "data", JS_NewString(ctx, dump_str.c_str()));
+    JS_SetPropertyStr(ctx, *obj, "data", JS_NewString(ctx, dump_str.c_str()));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_srixClear(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -415,15 +503,23 @@ JSValue native_srixWriteBlock(JSContext *ctx, JSValue *this_val, int argc, JSVal
 
     // Validate parameters
     if (argc < 2 || !JS_IsNumber(ctx, argv[0]) || !JS_IsString(ctx, argv[1])) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
         JS_SetPropertyStr(
             ctx,
-            obj,
+            *obj,
             "message",
             JS_NewString(ctx, "Invalid parameters: blockNum (number) and blockData (string) required")
         );
-        return obj;
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     int block_num;
@@ -432,28 +528,52 @@ JSValue native_srixWriteBlock(JSContext *ctx, JSValue *this_val, int argc, JSVal
     JSCStringBuf buf;
     const char *hex_data = JS_ToCString(ctx, argv[1], &buf);
     if (!hex_data) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Failed to read blockData string"));
-        return obj;
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Failed to read blockData string"));
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     // Validate block number
     if (block_num < 0 || block_num > 127) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-        JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Block number must be 0-127"));
-        return obj;
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+        JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Block number must be 0-127"));
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     // Validate hex data length (must be 8 characters = 4 bytes)
     if (strlen(hex_data) != 8) {
-        JSValue obj = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
+        // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+        // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+        JSGCRef obj_ref;
+        JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+        *obj = JS_NewObject(ctx);
+        if (JS_IsException(*obj)) {
+            JS_PopGCRef(ctx, &obj_ref);
+            return JS_ThrowOutOfMemory(ctx);
+        }
+        JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
         JS_SetPropertyStr(
-            ctx, obj, "message", JS_NewString(ctx, "Block data must be 8 hex characters (4 bytes)")
+            ctx, *obj, "message", JS_NewString(ctx, "Block data must be 8 hex characters (4 bytes)")
         );
-        return obj;
+        return JS_PopGCRef(ctx, &obj_ref);
     }
 
     // Convert hex string to bytes
@@ -468,52 +588,60 @@ JSValue native_srixWriteBlock(JSContext *ctx, JSValue *this_val, int argc, JSVal
     int result = srixReader->write_single_block_headless((uint8_t)block_num, block_data);
 
     // Create return object
-    JSValue obj = JS_NewObject(ctx);
+    // Pinned: every JS_SetPropertyStr() below allocates, which can compact the
+    // heap and move this object. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     switch (result) {
         case 0:
             // Success
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Write + Verify SUCCESS!"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Write + Verify SUCCESS!"));
             break;
         case 1:
             // Success with verify mismatch
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "VERIFY MISMATCH (write assumed OK)"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "VERIFY MISMATCH (write assumed OK)"));
             break;
         case 2:
             // Success but verify skipped
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(true));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "VERIFY SKIPPED (no RST / RF dirty)"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(true));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "VERIFY SKIPPED (no RST / RF dirty)"));
             break;
         case -1:
             // Timeout
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Timeout: no tag present"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Timeout: no tag present"));
             break;
         case -3:
             // Invalid data pointer
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Invalid data pointer"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Invalid data pointer"));
             break;
         case -4:
             // Invalid block number
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Invalid block number"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Invalid block number"));
             break;
         case -5:
             // Write failed
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Write operation failed"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Write operation failed"));
             break;
         default:
             // Unknown error
-            JS_SetPropertyStr(ctx, obj, "success", JS_NewBool(false));
-            JS_SetPropertyStr(ctx, obj, "message", JS_NewString(ctx, "Unknown error"));
+            JS_SetPropertyStr(ctx, *obj, "success", JS_NewBool(false));
+            JS_SetPropertyStr(ctx, *obj, "message", JS_NewString(ctx, "Unknown error"));
             break;
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 #endif

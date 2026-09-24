@@ -1,4 +1,202 @@
-![Bruce Main Menu](./media/pictures/bruce_banner.jpg)
+![Bruce-Modded on the LilyGo T-Embed CC1101](./media/pictures/bruce_banner.jpg)
+
+# Bruce-Modded — Dev 1.0
+
+**Stock Bruce, with the WiFi radio handed to JavaScript.**
+
+Scriptable deauth & beacon-spam · raw 802.11 frame injection · promiscuous
+packet capture · captive-portal (evil-twin) engine · headless BLE spam — all
+driven from the on-device JavaScript interpreter.
+
+Built and tested on the **LilyGo T-Embed CC1101** (ESP32-S3, 16 MB flash /
+8 MB PSRAM).
+
+![firmware](https://img.shields.io/badge/firmware-Dev%201.0-blue)
+![board](https://img.shields.io/badge/board-LilyGo%20T--Embed%20CC1101-informational)
+![mcu](https://img.shields.io/badge/MCU-ESP32--S3-success)
+![license](https://img.shields.io/badge/license-AGPL--3.0-orange)
+
+[Flash it](#flashing-the-release-image) ·
+[What's new](#whats-new-in-dev-10) ·
+[JavaScript API](#javascript-api) ·
+[Build it](#building-from-source) ·
+[Limitations](#known-limitations)
+
+---
+
+## What is this?
+
+Bruce-Modded is a fork of [Bruce](https://github.com/pr3y/Bruce) — the ESP32
+offensive-security firmware — with a scriptable WiFi/BLE attack engine added to
+its JavaScript interpreter.
+
+Stock Bruce exposes its WiFi attacks as **menus you tap**. This mod exposes them
+as **functions a script calls**, adds a raw 802.11 transmit path, a promiscuous
+capture engine and a captive-portal engine, and then makes the interpreter safe
+against the JS engine's moving garbage collector.
+
+> **Status:** Dev 1.0, based on upstream `main` @ `a59213f3` (2026-09-24).
+> Only the LilyGo T-Embed CC1101 target is built and tested.
+
+---
+
+## What's new in Dev 1.0
+
+### Firmware engine
+
+| # | Change | Detail |
+|---|--------|--------|
+| 1 | **Headless WiFi attacks** | `wifi_atks` gained a deadline-bounded API (`wifi_atk_setWifi()`, `wifi_atk_unsetWifi()`, `wifi_complete_cleanup()`, `headlessBeaconSpam()`) so a script can run an attack with no button presses and no UI blocking |
+| 2 | **Raw 802.11 injection** | `wifi_raw_inject()` transmits arbitrary frames with `esp_wifi_80211_tx()`, the AP callback bypassed, auto-selecting the STA/AP interface, with repeat, inter-frame gap and CRC32 FCS options |
+| 3 | **Promiscuous capture** | PSRAM-backed capture engine: 2 session slots, 100 packets / 50 KB per session, self-reaping deadlines |
+| 4 | **Captive portal / evil twin** | `wifi_portal_run()` brings up an open AP, hijacks DNS, answers captive-portal probe paths with a 302 and can deauth the real AP |
+| 5 | **Application-layer builders** | Real IPv4 + UDP/TCP checksums (`wifi_build_dns_response()`, `wifi_inject_udp()`, `wifi_inject_tcp()`) and frame parsers (`wifi_parse_frame()`, `wifi_parse_ipv4()`) |
+| 6 | **Headless BLE spam** | `ble_spam` exposes the same advertisement builders as the on-screen menu, deadline-bounded |
+| 7 | **Interpreter GC safety** | The JS engine (`mquickjs`) has a *compacting, moving* collector that never scans the C stack, so every binding that builds an array or object now pins its intermediates in `JSGCRef` and re-reads them after each allocating call — 15 interpreter modules hardened |
+| 8 | **Script lifecycle** | `interpreter.cpp` calls `wifi_js_cleanup()` on exit, so a script cannot leak radio state into the next one |
+| 9 | **Boot version** | The splash screen now reads **Bruce / Dev 1.0** |
+| 10 | **Release build** | `build.py` also emits `Bruce-modded.bin`, one merged image for a single `write_flash` |
+
+### New script bindings
+
+17 new WiFi bindings, 2 BLE bindings and 5 misc helpers, on top of everything
+stock Bruce already exposed. Signatures: [JavaScript API](#javascript-api).
+
+---
+
+## Flashing the release image
+
+`Bruce-modded.bin` is a **merged** image (bootloader + partition table + app) and
+**must be flashed at offset `0x0`**.
+
+```sh
+sha256sum -c Bruce-modded.bin.sha256
+esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 \
+    write_flash 0x0 Bruce-modded.bin
+```
+
+* Replace `/dev/ttyACM0` with your port (`COM5` on Windows).
+* The board exposes USB-Serial-JTAG while it is in console mode (`lsusb` →
+  `303a:1001`). If no port appears, it is in **Mass Storage** mode
+  (`303a:0002`) — exit that feature on the device and re-plug. No host command
+  can switch it for you.
+* Clean install (wipes saved config and LittleFS):
+  `esptool.py ... erase_flash` first, then flash.
+* Flashing at any offset other than `0x0` leaves bootloader and partition table
+  mismatched and the board will not boot.
+* To go back to stock Bruce or a Launcher install, flash that project's merged
+  image at `0x0` the same way, after an `erase_flash`.
+
+First boot shows **Bruce** with **Dev 1.0** underneath.
+
+---
+
+## JavaScript API
+
+The engine is `mquickjs`, so scripts are **plain ES5**: no `let`/`const`, no
+arrow functions, no template literals, no destructuring, no classes, no promises.
+
+```js
+var wifi = require("wifi");
+
+// 1. Attack from a script - no menus involved
+wifi.deauth("AA:BB:CC:DD:EE:FF", 6, 10);     // bssid, channel, seconds
+wifi.beaconSpam(4, 30, "FreeWiFi");          // 4 = counter SSID, 30 seconds
+
+// 2. Listen promiscuously, then read the frames back
+var id = wifi.captureStart(6, 15000);        // channel, timeoutMs -> session id
+var pkts = wifi.getCapturedPackets(id, 100); // [{timestamp, channel, rssi, data}, ...]
+var info = wifi.packetInfo(pkts[0].data);    // decode one frame
+
+// 3. Transmit a hand-built frame
+wifi.injectPacket("80000000ffffffffffffaabbccddeeffaabbccddeeff0000", 6);
+```
+
+| Binding | Returns |
+|---------|---------|
+| `wifi.deauth(bssid, channel?, seconds?)` | `number` |
+| `wifi.deauthAll(seconds?, channel?)` | `number` |
+| `wifi.beaconSpam(mode?, seconds?, ssid?)` | `number` (mode 4 = counter SSID) |
+| `wifi.sniffHandshake(bssid, channel?, seconds?, ssid?)` | `object` (writes a pcap) |
+| `wifi.injectPacket(hex, channel?)` | `boolean` |
+| `wifi.sendRaw80211(hex, channel?, options?)` | `object` |
+| `wifi.captureStart(channel?, timeoutMs?)` / `wifi.captureStop(id)` | `number` / `boolean` |
+| `wifi.getCapturedPackets(id, maxPackets?)` | `array` |
+| `wifi.setPromiscuous(enable, channel?)` | `boolean` |
+| `wifi.portal(ssid, channel?, options?)` | `object` |
+| `wifi.packetInfo(hex)` | `object` |
+| `wifi.injectDns(...)` `wifi.injectHttp(...)` `wifi.injectHttpRedirect(...)` `wifi.injectHtml(...)` | `object` |
+| `ble.spam(type?, seconds?)` / `ble.spamModes()` | `number` / `array` |
+| `ir.transmitRaw(frequency, rawData)` | `boolean` |
+| `subghz.scan(startFreq?, stopFreq?, maxLoops?)` | `string` |
+| `serial.available()` / `serial.read(maxBytes?, timeoutMs?)` | `number` / `string` |
+| `storage.exists(path)` / `storage.size(path)` / `storage.copy(src, dest, overwrite?)` | `boolean` / `number` / `boolean` |
+
+`test.js` in the repository root is a smoke test for the raw-injection and
+capture bindings: it prints one `PASS`/`FAIL` line per binding to the serial
+console, and its header doubles as a worked example.
+
+### Running a script
+
+Put the script on the SD card under `/scripts`, `/BruceScripts` or `/BruceJS`
+(LittleFS works as a fallback), then open **Scripts** in the main menu, or load
+it from another script:
+
+```js
+load('/BruceJS/myscript.js')
+```
+
+---
+
+## Known limitations
+
+These are properties of the radio, the board or the engine - not bugs waiting to
+be fixed. Read them before filing an issue.
+
+* **Application-layer injection only lands on OPEN / WEP networks.** On
+  WPA2/WPA3 the client's radio requires the frame to be encrypted with its
+  pairwise key, so a forged plaintext data frame is dropped at the radio.
+* **Forged TCP/DNS must match the live conversation** (ports, TCP seq/ack, DNS
+  transaction id) or the victim's stack discards it silently. Capture →
+  `wifi.packetInfo()` → inject with the captured values.
+* **The evil twin has no uplink** (the ESP32 cannot NAT), so every DNS name
+  resolves back to the device and portal pages must be self-contained.
+* **The twin AP is open**, so devices holding a saved WPA2 profile for the same
+  SSID usually will not auto-join it.
+* **`storage.copy` is unreliable for file-to-file copies** - it treats the
+  destination as a directory. Use `storage.read()` + `storage.write()`.
+* **No FreeFont is loaded**, so the panel font is ASCII only - emoji render as
+  boxes.
+* **The panel is 320x170 landscape**, so lay out from `display.width()` /
+  `display.height()` rather than hardcoded geometry.
+* **Long native calls block the script** - the UI freezes until they return.
+
+---
+
+## Building from source
+
+Requires PlatformIO Core 6.1.19+ and python3. The first build needs network
+access to resolve `lib_deps` (Arduino-ESP32 3.3.9, pioarduino platform 55.03.39,
+toolchain-xtensa-esp-elf 14.2.0); everything is cached under `.pio/` afterwards.
+
+```sh
+pio run -e lilygo-t-embed-cc1101
+```
+
+This produces `Bruce-lilygo-t-embed-cc1101.bin` and a merged copy named
+`Bruce-modded.bin` in the project root (a `build.py` post-action runs
+`esptool merge-bin`). Because `BRUCE_VERSION` is a `build_flags` define,
+changing it invalidates the whole build cache - expect a ~15-25 minute rebuild.
+
+---
+
+## About the upstream project
+
+Everything below this line is the upstream Bruce project - feature list,
+supported devices, credits and license. Bruce-Modded is a derivative work and
+keeps all of it intact.
+
+---
 
 # :shark: Bruce
 
@@ -8,7 +206,7 @@ It also supports [M5Stack](https://shop.m5stack.com), [LILYGO](https://lilygo.cc
 
 ## :zap: Get Our Official DevKit!
 
-# RF REAPER
+### RF REAPER
 
 **RF REAPER** is our custom PCB devkit, purpose-built for Bruce!
 

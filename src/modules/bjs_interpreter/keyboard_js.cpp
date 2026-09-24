@@ -117,42 +117,56 @@ JSValue native_setLongPress(JSContext *ctx, JSValue *this_val, int argc, JSValue
 }
 
 JSValue native_getKeysPressed(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
-    JSValue arr = JS_NewArray(ctx, 0);
+    // Every JS_NewString()/JS_SetPropertyUint32() below can allocate, so the
+    // array and the string being appended both have to be GC roots. Re-reading
+    // from the ref after the append also guarantees the append itself used a
+    // current pointer. See native_wifiGetCapturedPackets() in wifi_js.cpp.
+    JSGCRef arr_ref;
+    JSValue *arr = JS_PushGCRef(ctx, &arr_ref);
+    *arr = JS_NewArray(ctx, 0);
+    if (JS_IsException(*arr)) {
+        JS_PopGCRef(ctx, &arr_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
 #ifdef HAS_KEYBOARD
     keyStroke key = _getKeyPress();
-    if (!key.pressed) return arr;
+    if (!key.pressed) return JS_PopGCRef(ctx, &arr_ref);
     uint32_t arrayIndex = 0;
+    JSGCRef s_ref;
+    JSValue *s = JS_PushGCRef(ctx, &s_ref);
+    *s = JS_UNDEFINED;
     for (auto i : key.word) {
         char str[2] = {(char)i, '\0'};
-        JSValue s = JS_NewString(ctx, str);
-        JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+        *s = JS_NewString(ctx, str);
+        JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
     }
     if (key.del) {
-        JSValue s = JS_NewString(ctx, "Delete");
-        JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+        *s = JS_NewString(ctx, "Delete");
+        JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
     }
     if (key.enter) {
-        JSValue s = JS_NewString(ctx, "Enter");
-        JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+        *s = JS_NewString(ctx, "Enter");
+        JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
     }
     if (key.fn) {
-        JSValue s = JS_NewString(ctx, "Function");
-        JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+        *s = JS_NewString(ctx, "Function");
+        JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
     }
     for (auto i : key.modifier_keys) {
         if (i == 0x82) {
-            JSValue s = JS_NewString(ctx, "Alt");
-            JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+            *s = JS_NewString(ctx, "Alt");
+            JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
         } else if (i == 0x2B) {
-            JSValue s = JS_NewString(ctx, "Tab");
-            JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+            *s = JS_NewString(ctx, "Tab");
+            JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
         } else if (i == 0x00) {
-            JSValue s = JS_NewString(ctx, "Option");
-            JS_SetPropertyUint32(ctx, arr, arrayIndex++, s);
+            *s = JS_NewString(ctx, "Option");
+            JS_SetPropertyUint32(ctx, *arr, arrayIndex++, *s);
         }
     }
+    JS_PopGCRef(ctx, &s_ref);
 #endif
-    return arr;
+    return JS_PopGCRef(ctx, &arr_ref);
 }
 
 #endif

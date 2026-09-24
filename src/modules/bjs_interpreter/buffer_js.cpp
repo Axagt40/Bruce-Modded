@@ -33,40 +33,61 @@ JSValue native_buffer_from(JSContext *ctx, JSValue *this_val, int argc, JSValue 
         return JS_ThrowTypeError(ctx, "Buffer.from: arg0 must be string");
     }
 
-    const char *enc = NULL;
+    // Copied: JS_ToCString() hands back a pointer into the movable JS heap, so
+    // the encoding string taken before the input string would be invalidated by
+    // the conversion of the input (which allocates).
+    String enc = "";
     if (argc > 1 && !JS_IsUndefined(argv[1])) {
         if (!JS_IsString(ctx, argv[1])) {
             return JS_ThrowTypeError(ctx, "Buffer.from: arg1 must be string encoding");
         }
-        JSCStringBuf enc_sb;
-        enc = JS_ToCString(ctx, argv[1], &enc_sb);
+        enc = js_tocstring_copy(ctx, argv[1]);
     }
 
     size_t input_len = 0;
     JSCStringBuf input_sb;
-    const char *input = JS_ToCStringLen(ctx, &input_len, argv[0], &input_sb);
-    if (!input) { return JS_ThrowTypeError(ctx, "Buffer.from: invalid string"); }
+    const char *inputRaw = JS_ToCStringLen(ctx, &input_len, argv[0], &input_sb);
+    if (!inputRaw) { return JS_ThrowTypeError(ctx, "Buffer.from: invalid string"); }
+    // Own copy of the source bytes: JS_NewUint8ArrayCopy() allocates the
+    // destination buffer before it reads the source, so a GC in between would
+    // otherwise leave it reading relocated (or collected) memory.
+    String input(inputRaw, input_len);
 
-    JSValue bytes;
+    JSGCRef bytes_ref;
+    JSValue *bytes = JS_PushGCRef(ctx, &bytes_ref);
     size_t out_len = 0;
-    if (!enc || strcmp(enc, "utf8") == 0 || strcmp(enc, "utf-8") == 0) {
-        bytes = JS_NewUint8ArrayCopy(ctx, (const uint8_t *)input, input_len);
+    if (enc.length() == 0 || enc == "utf8" || enc == "utf-8") {
+        *bytes = JS_NewUint8ArrayCopy(ctx, (const uint8_t *)input.c_str(), input_len);
         out_len = input_len;
-    } else if (strcmp(enc, "base64") == 0) {
-        bytes = buffer_decode_base64(ctx, (const uint8_t *)input, input_len, &out_len);
+    } else if (enc == "base64") {
+        *bytes = buffer_decode_base64(ctx, (const uint8_t *)input.c_str(), input_len, &out_len);
     } else {
+        JS_PopGCRef(ctx, &bytes_ref);
         return JS_ThrowTypeError(ctx, "Buffer.from: unsupported encoding");
     }
 
-    if (JS_IsException(bytes)) { return bytes; }
+    if (JS_IsException(*bytes)) {
+        JSValue err = *bytes;
+        JS_PopGCRef(ctx, &bytes_ref);
+        return err;
+    }
 
-    JSValue obj = JS_NewObjectClassUser(ctx, JS_CLASS_BUFFER);
-    if (JS_IsException(obj)) { return obj; }
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObjectClassUser(ctx, JS_CLASS_BUFFER);
+    if (JS_IsException(*obj)) {
+        JSValue err = *obj;
+        JS_PopGCRef(ctx, &obj_ref);
+        JS_PopGCRef(ctx, &bytes_ref);
+        return err;
+    }
 
-    JS_SetPropertyStr(ctx, obj, "_data", bytes);
-    JS_SetPropertyStr(ctx, obj, "length", JS_NewUint32(ctx, out_len));
+    JS_SetPropertyStr(ctx, *obj, "_data", *bytes);
+    JS_SetPropertyStr(ctx, *obj, "length", JS_NewUint32(ctx, out_len));
 
-    return obj;
+    JSValue result = JS_PopGCRef(ctx, &obj_ref);
+    JS_PopGCRef(ctx, &bytes_ref);
+    return result;
 }
 
 JSValue native_buffer_toString(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {

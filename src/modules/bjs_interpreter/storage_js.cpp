@@ -28,7 +28,14 @@ JSValue native_storageReaddir(JSContext *ctx, JSValue *this_val, int argc, JSVal
         return JS_ThrowTypeError(ctx, "%s: Not a directory: %s", "storageReaddir", fileParams.path.c_str());
     }
 
-    JSValue arr = JS_NewArray(ctx, 0);
+    // Pinned: this loop appends and allocates for every directory entry.
+    JSGCRef arr_ref;
+    JSValue *arr = JS_PushGCRef(ctx, &arr_ref);
+    *arr = JS_NewArray(ctx, 0);
+    if (JS_IsException(*arr)) {
+        JS_PopGCRef(ctx, &arr_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
     uint32_t index = 0;
 
     while (true) {
@@ -38,26 +45,35 @@ JSValue native_storageReaddir(JSContext *ctx, JSValue *this_val, int argc, JSVal
         if (fullPath == "") { break; }
 
         if (withFileTypes) {
-            JSValue obj = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, nameOnly.c_str()));
+            JSGCRef obj_ref;
+            JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+            *obj = JS_NewObject(ctx);
+            if (JS_IsException(*obj)) {
+                JS_PopGCRef(ctx, &obj_ref);
+                root.close();
+                JS_PopGCRef(ctx, &arr_ref);
+                return JS_ThrowOutOfMemory(ctx);
+            }
+            JS_SetPropertyStr(ctx, *obj, "name", JS_NewString(ctx, nameOnly.c_str()));
 
             if (isDir) {
-                JS_SetPropertyStr(ctx, obj, "size", JS_NewInt32(ctx, 0));
+                JS_SetPropertyStr(ctx, *obj, "size", JS_NewInt32(ctx, 0));
             } else {
                 File file = (fileParams.fs)->open(fullPath);
-                JS_SetPropertyStr(ctx, obj, "size", JS_NewInt32(ctx, (int)file.size()));
+                JS_SetPropertyStr(ctx, *obj, "size", JS_NewInt32(ctx, (int)file.size()));
                 file.close();
             }
 
-            JS_SetPropertyStr(ctx, obj, "isDirectory", JS_NewBool(isDir));
-            JS_SetPropertyUint32(ctx, arr, index++, obj);
+            JS_SetPropertyStr(ctx, *obj, "isDirectory", JS_NewBool(isDir));
+            JS_SetPropertyUint32(ctx, *arr, index++, *obj);
+            JS_PopGCRef(ctx, &obj_ref);
         } else {
-            JS_SetPropertyUint32(ctx, arr, index++, JS_NewString(ctx, nameOnly.c_str()));
+            JS_SetPropertyUint32(ctx, *arr, index++, JS_NewString(ctx, nameOnly.c_str()));
         }
     }
     root.close();
 
-    return arr;
+    return JS_PopGCRef(ctx, &arr_ref);
 }
 
 JSValue native_storageRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -224,12 +240,18 @@ JSValue native_storageSpaceLittleFS(JSContext *ctx, JSValue *this_val, int argc,
     uint32_t totalKiloBytes = (uint32_t)(LittleFS.totalBytes() / 1024);
     uint32_t usedKiloBytes = (uint32_t)(LittleFS.usedBytes() / 1024);
 
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "total", JS_NewUint32(ctx, totalKiloBytes));
-    JS_SetPropertyStr(ctx, obj, "used", JS_NewUint32(ctx, usedKiloBytes));
-    JS_SetPropertyStr(ctx, obj, "free", JS_NewUint32(ctx, (totalKiloBytes - usedKiloBytes)));
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "total", JS_NewUint32(ctx, totalKiloBytes));
+    JS_SetPropertyStr(ctx, *obj, "used", JS_NewUint32(ctx, usedKiloBytes));
+    JS_SetPropertyStr(ctx, *obj, "free", JS_NewUint32(ctx, (totalKiloBytes - usedKiloBytes)));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 JSValue native_storageSpaceSDCard(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
@@ -239,11 +261,91 @@ JSValue native_storageSpaceSDCard(JSContext *ctx, JSValue *this_val, int argc, J
     uint32_t totalKiloBytes = (uint32_t)(SD.totalBytes() / 1024);
     uint32_t usedKiloBytes = (uint32_t)(SD.usedBytes() / 1024);
 
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "total", JS_NewUint32(ctx, totalKiloBytes));
-    JS_SetPropertyStr(ctx, obj, "used", JS_NewUint32(ctx, usedKiloBytes));
-    JS_SetPropertyStr(ctx, obj, "free", JS_NewUint32(ctx, (totalKiloBytes - usedKiloBytes)));
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "total", JS_NewUint32(ctx, totalKiloBytes));
+    JS_SetPropertyStr(ctx, *obj, "used", JS_NewUint32(ctx, usedKiloBytes));
+    JS_SetPropertyStr(ctx, *obj, "free", JS_NewUint32(ctx, (totalKiloBytes - usedKiloBytes)));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
+}
+
+JSValue native_storageExists(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    (void)argc;
+    // usage: storage.exists(path: string | Path): boolean
+    FileParamsJS fileParams = js_get_path_from_params(ctx, argv, false);
+    if (!fileParams.path.startsWith("/")) fileParams.path = "/" + fileParams.path;
+    return JS_NewBool((fileParams.fs)->exists(fileParams.path));
+}
+
+JSValue native_storageSize(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    (void)argc;
+    // usage: storage.size(path: string | Path): number  (-1 when missing)
+    FileParamsJS fileParams = js_get_path_from_params(ctx, argv, true);
+    if (!fileParams.path.startsWith("/")) fileParams.path = "/" + fileParams.path;
+    if (!fileParams.exist) return JS_NewInt32(ctx, -1);
+
+    File file = (fileParams.fs)->open(fileParams.path, FILE_READ);
+    if (!file) return JS_NewInt32(ctx, -1);
+
+    int32_t size = (int32_t)file.size();
+    file.close();
+    return JS_NewInt32(ctx, size);
+}
+
+JSValue native_storageCopy(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    // usage: storage.copy(src: string | Path, destPath: string, overwrite?: boolean): boolean
+    // Copies between paths on the same filesystem as `src`. To move data across
+    // LittleFS/SD, read it (storage.read) and write it (storage.write).
+    FileParamsJS src = js_get_path_from_params(ctx, argv, true);
+    if (!src.exist) {
+        return JS_ThrowTypeError(ctx, "%s: File: %s does not exist", "storageCopy", src.path.c_str());
+    }
+    if (!src.path.startsWith("/")) src.path = "/" + src.path;
+
+    if (argc < 2 || !JS_IsString(ctx, argv[1]))
+        return JS_ThrowTypeError(ctx, "storageCopy(src, destPath:string, overwrite?:boolean)");
+
+    JSCStringBuf db;
+    const char *destStr = JS_ToCString(ctx, argv[1], &db);
+    String destPath = destStr ? String(destStr) : String("");
+    if (destPath.length() == 0) return JS_ThrowTypeError(ctx, "storageCopy: destPath is empty");
+    if (!destPath.startsWith("/")) destPath = "/" + destPath;
+
+    bool overwrite = true;
+    if (argc > 2 && JS_IsBool(argv[2])) overwrite = JS_ToBool(ctx, argv[2]);
+    if (!overwrite && (src.fs)->exists(destPath)) return JS_NewBool(false);
+
+    File in = (src.fs)->open(src.path, FILE_READ);
+    if (!in) return JS_NewBool(false);
+
+    File out = (src.fs)->open(destPath, FILE_WRITE);
+    if (!out) {
+        in.close();
+        return JS_NewBool(false);
+    }
+
+    uint8_t buf[512];
+    bool ok = true;
+    while (true) {
+        size_t read = in.read(buf, sizeof(buf));
+        if (read == 0) break;
+        if (out.write(buf, read) != read) {
+            ok = false;
+            break;
+        }
+    }
+
+    out.close();
+    in.close();
+    return JS_NewBool(ok);
 }
 #endif

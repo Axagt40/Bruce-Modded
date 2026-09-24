@@ -339,6 +339,12 @@ FileParamsJS js_get_path_from_params(JSContext *ctx, JSValue *argv, bool checkIf
     return filePath;
 }
 
+String js_tocstring_copy(JSContext *ctx, JSValue val) {
+    JSCStringBuf buf;
+    const char *s = JS_ToCString(ctx, val, &buf);
+    return s != NULL ? String(s) : String();
+}
+
 JSValue js_value_from_json_variant(JSContext *ctx, JsonVariantConst value) {
     if (value.isNull()) return JS_NULL;
     if (value.is<bool>()) return JS_NewBool(value.as<bool>());
@@ -348,21 +354,36 @@ JSValue js_value_from_json_variant(JSContext *ctx, JsonVariantConst value) {
     }
     if (value.is<JsonArrayConst>()) {
         JsonArrayConst arr = value.as<JsonArrayConst>();
-        JSValue jsArr = JS_NewArray(ctx, arr.size());
+        // Pinned: every recursive call below allocates, which can compact the
+        // heap and move the array. See native_wifiGetCapturedPackets() in
+        // wifi_js.cpp for the full explanation of the hazard.
+        JSGCRef jsArr_ref;
+        JSValue *jsArr = JS_PushGCRef(ctx, &jsArr_ref);
+        *jsArr = JS_NewArray(ctx, arr.size());
+        if (JS_IsException(*jsArr)) {
+            JS_PopGCRef(ctx, &jsArr_ref);
+            return JS_EXCEPTION;
+        }
         uint32_t idx = 0;
         for (JsonVariantConst item : arr) {
-            JS_SetPropertyUint32(ctx, jsArr, idx++, js_value_from_json_variant(ctx, item));
+            JS_SetPropertyUint32(ctx, *jsArr, idx++, js_value_from_json_variant(ctx, item));
         }
-        return jsArr;
+        return JS_PopGCRef(ctx, &jsArr_ref);
     }
     if (value.is<JsonObjectConst>()) {
         JsonObjectConst obj = value.as<JsonObjectConst>();
-        JSValue jsObj = JS_NewObject(ctx);
+        JSGCRef jsObj_ref;
+        JSValue *jsObj = JS_PushGCRef(ctx, &jsObj_ref);
+        *jsObj = JS_NewObject(ctx);
+        if (JS_IsException(*jsObj)) {
+            JS_PopGCRef(ctx, &jsObj_ref);
+            return JS_EXCEPTION;
+        }
         for (JsonPairConst kv : obj) {
             const char *key = kv.key().c_str();
-            JS_SetPropertyStr(ctx, jsObj, key ? key : "", js_value_from_json_variant(ctx, kv.value()));
+            JS_SetPropertyStr(ctx, *jsObj, key ? key : "", js_value_from_json_variant(ctx, kv.value()));
         }
-        return jsObj;
+        return JS_PopGCRef(ctx, &jsObj_ref);
     }
     if (value.is<int64_t>()) return JS_NewInt64(ctx, value.as<int64_t>());
     if (value.is<uint64_t>()) {

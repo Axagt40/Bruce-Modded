@@ -168,17 +168,24 @@ JSValue native_pinMode(JSContext *ctx, JSValue *this_val, int argc, JSValue *arg
 }
 
 JSValue native_pins(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "grove_sda", JS_NewInt32(ctx, bruceConfigPins.i2c_bus.sda));
-    JS_SetPropertyStr(ctx, obj, "grove_scl", JS_NewInt32(ctx, bruceConfigPins.i2c_bus.scl));
-    JS_SetPropertyStr(ctx, obj, "serial_tx", JS_NewInt32(ctx, bruceConfigPins.uart_bus.tx));
-    JS_SetPropertyStr(ctx, obj, "serial_rx", JS_NewInt32(ctx, bruceConfigPins.uart_bus.rx));
-    JS_SetPropertyStr(ctx, obj, "spi_sck", JS_NewInt32(ctx, SPI_SCK_PIN));
-    JS_SetPropertyStr(ctx, obj, "spi_mosi", JS_NewInt32(ctx, SPI_MOSI_PIN));
-    JS_SetPropertyStr(ctx, obj, "spi_miso", JS_NewInt32(ctx, SPI_MISO_PIN));
-    JS_SetPropertyStr(ctx, obj, "spi_ss", JS_NewInt32(ctx, SPI_SS_PIN));
-    JS_SetPropertyStr(ctx, obj, "ir_tx", JS_NewInt32(ctx, TXLED));
-    JS_SetPropertyStr(ctx, obj, "ir_rx", JS_NewInt32(ctx, RXLED));
-    return obj;
+    // Pinned: each store below allocates and can move the object.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "grove_sda", JS_NewInt32(ctx, bruceConfigPins.i2c_bus.sda));
+    JS_SetPropertyStr(ctx, *obj, "grove_scl", JS_NewInt32(ctx, bruceConfigPins.i2c_bus.scl));
+    JS_SetPropertyStr(ctx, *obj, "serial_tx", JS_NewInt32(ctx, bruceConfigPins.uart_bus.tx));
+    JS_SetPropertyStr(ctx, *obj, "serial_rx", JS_NewInt32(ctx, bruceConfigPins.uart_bus.rx));
+    JS_SetPropertyStr(ctx, *obj, "spi_sck", JS_NewInt32(ctx, SPI_SCK_PIN));
+    JS_SetPropertyStr(ctx, *obj, "spi_mosi", JS_NewInt32(ctx, SPI_MOSI_PIN));
+    JS_SetPropertyStr(ctx, *obj, "spi_miso", JS_NewInt32(ctx, SPI_MISO_PIN));
+    JS_SetPropertyStr(ctx, *obj, "spi_ss", JS_NewInt32(ctx, SPI_SS_PIN));
+    JS_SetPropertyStr(ctx, *obj, "ir_tx", JS_NewInt32(ctx, TXLED));
+    JS_SetPropertyStr(ctx, *obj, "ir_rx", JS_NewInt32(ctx, RXLED));
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 #endif

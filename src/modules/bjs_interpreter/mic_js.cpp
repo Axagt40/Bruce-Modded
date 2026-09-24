@@ -91,13 +91,19 @@ JSValue native_micRecordWav(JSContext *ctx, JSValue *this_val, int argc, JSValue
         // No filesystem specified - auto-detect (SD or LittleFS)
         if (!getFsStorage(fs) || fs == nullptr) {
             // No storage available - return failure object
-            JSValue obj = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, obj, "ok", JS_NewBool(0));
-            JS_SetPropertyStr(ctx, obj, "path", JS_NewString(ctx, ""));
-            JS_SetPropertyStr(ctx, obj, "bytes", JS_NewInt32(ctx, 0));
-            JS_SetPropertyStr(ctx, obj, "sampleRateHz", JS_NewInt32(ctx, 48000));
-            JS_SetPropertyStr(ctx, obj, "channels", JS_NewInt32(ctx, 1));
-            return obj;
+            JSGCRef obj_ref;
+            JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+            *obj = JS_NewObject(ctx);
+            if (JS_IsException(*obj)) {
+                JS_PopGCRef(ctx, &obj_ref);
+                return JS_ThrowOutOfMemory(ctx);
+            }
+            JS_SetPropertyStr(ctx, *obj, "ok", JS_NewBool(0));
+            JS_SetPropertyStr(ctx, *obj, "path", JS_NewString(ctx, ""));
+            JS_SetPropertyStr(ctx, *obj, "bytes", JS_NewInt32(ctx, 0));
+            JS_SetPropertyStr(ctx, *obj, "sampleRateHz", JS_NewInt32(ctx, 48000));
+            JS_SetPropertyStr(ctx, *obj, "channels", JS_NewInt32(ctx, 1));
+            return JS_PopGCRef(ctx, &obj_ref);
         }
     }
 
@@ -129,14 +135,21 @@ JSValue native_micRecordWav(JSContext *ctx, JSValue *this_val, int argc, JSValue
     );
 
     // ===== BUILD RESULT OBJECT =====
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "ok", JS_NewBool(ok ? 1 : 0));
-    JS_SetPropertyStr(ctx, obj, "path", JS_NewString(ctx, path.c_str()));
-    JS_SetPropertyStr(ctx, obj, "bytes", JS_NewInt32(ctx, (int32_t)outBytes));
-    JS_SetPropertyStr(ctx, obj, "sampleRateHz", JS_NewInt32(ctx, 48000));
-    JS_SetPropertyStr(ctx, obj, "channels", JS_NewInt32(ctx, 1));
+    // Pinned: each store below allocates and can move the object.
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "ok", JS_NewBool(ok ? 1 : 0));
+    JS_SetPropertyStr(ctx, *obj, "path", JS_NewString(ctx, path.c_str()));
+    JS_SetPropertyStr(ctx, *obj, "bytes", JS_NewInt32(ctx, (int32_t)outBytes));
+    JS_SetPropertyStr(ctx, *obj, "sampleRateHz", JS_NewInt32(ctx, 48000));
+    JS_SetPropertyStr(ctx, *obj, "channels", JS_NewInt32(ctx, 1));
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 /**
@@ -220,27 +233,39 @@ JSValue native_micCaptureSamples(JSContext *ctx, JSValue *this_val, int argc, JS
     bool ok = mic_capture_samples(numSamples, sampleRate, gain, &samples, &actualSampleRate);
 
     // Build result object
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "ok", JS_NewBool(ok ? 1 : 0));
-    JS_SetPropertyStr(ctx, obj, "sampleRate", JS_NewInt32(ctx, (int32_t)actualSampleRate));
-    JS_SetPropertyStr(ctx, obj, "numSamples", JS_NewInt32(ctx, (int32_t)numSamples));
+    // Both the result object and the sample array are pinned: this can be a
+    // multi-thousand-element array, which is exactly the heap pressure that
+    // triggers the compacting GC. See native_wifiGetCapturedPackets().
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "ok", JS_NewBool(ok ? 1 : 0));
+    JS_SetPropertyStr(ctx, *obj, "sampleRate", JS_NewInt32(ctx, (int32_t)actualSampleRate));
+    JS_SetPropertyStr(ctx, *obj, "numSamples", JS_NewInt32(ctx, (int32_t)numSamples));
 
     // Create JavaScript array from samples
     if (ok && samples) {
-        JSValue samplesArray = JS_NewArray(ctx, numSamples);
+        JSGCRef samplesArray_ref;
+        JSValue *samplesArray = JS_PushGCRef(ctx, &samplesArray_ref);
+        *samplesArray = JS_NewArray(ctx, numSamples);
         for (uint32_t i = 0; i < numSamples; i++) {
-            JS_SetPropertyUint32(ctx, samplesArray, i, JS_NewInt32(ctx, (int32_t)samples[i]));
+            JS_SetPropertyUint32(ctx, *samplesArray, i, JS_NewInt32(ctx, (int32_t)samples[i]));
         }
-        JS_SetPropertyStr(ctx, obj, "samples", samplesArray);
+        JS_SetPropertyStr(ctx, *obj, "samples", *samplesArray);
+        JS_PopGCRef(ctx, &samplesArray_ref);
 
         // Free native buffer
         free(samples);
     } else {
         // Return empty array on failure
-        JS_SetPropertyStr(ctx, obj, "samples", JS_NewArray(ctx, 0));
+        JS_SetPropertyStr(ctx, *obj, "samples", JS_NewArray(ctx, 0));
     }
 
-    return obj;
+    return JS_PopGCRef(ctx, &obj_ref);
 }
 
 #endif

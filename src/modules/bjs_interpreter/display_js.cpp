@@ -732,10 +732,16 @@ JSValue native_gifDimensions(JSContext *ctx, JSValue *this_val, int argc, JSValu
     if (!gif) return JS_NewInt32(ctx, 0);
     int canvasWidth = gif->getCanvasWidth();
     int canvasHeight = gif->getCanvasHeight();
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "width", JS_NewInt32(ctx, canvasWidth));
-    JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, canvasHeight));
-    return obj;
+    JSGCRef obj_ref;
+    JSValue *obj = JS_PushGCRef(ctx, &obj_ref);
+    *obj = JS_NewObject(ctx);
+    if (JS_IsException(*obj)) {
+        JS_PopGCRef(ctx, &obj_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    JS_SetPropertyStr(ctx, *obj, "width", JS_NewInt32(ctx, canvasWidth));
+    JS_SetPropertyStr(ctx, *obj, "height", JS_NewInt32(ctx, canvasHeight));
+    return JS_PopGCRef(ctx, &obj_ref);
 #else
     return JS_NULL;
 #endif

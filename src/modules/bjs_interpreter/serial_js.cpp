@@ -83,4 +83,39 @@ JSValue native_serialCmd(JSContext *ctx, JSValue *this_val, int argc, JSValue *a
     return JS_NewBool(r);
 }
 
+JSValue native_serialAvailable(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    // usage: serial.available()
+    // returns: number of bytes waiting in the UART RX buffer
+    return JS_NewInt32(ctx, (int)Serial.available());
+}
+
+JSValue native_serialRead(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    // usage: serial.read(maxBytes?: int, timeoutMs?: int)
+    // returns: whatever was received, up to maxBytes or until timeoutMs elapses
+    int maxBytes = 256;
+    if (argc > 0 && JS_IsNumber(ctx, argv[0])) JS_ToInt32(ctx, &maxBytes, argv[0]);
+    if (maxBytes < 1) maxBytes = 1;
+    if (maxBytes > 4096) maxBytes = 4096;
+
+    int timeoutMs = 0;
+    if (argc > 1 && JS_IsNumber(ctx, argv[1])) JS_ToInt32(ctx, &timeoutMs, argv[1]);
+    if (timeoutMs < 0) timeoutMs = 0;
+    if (timeoutMs > 60000) timeoutMs = 60000;
+
+    uint32_t start = millis();
+    String out = "";
+    while ((int)out.length() < maxBytes) {
+        while (Serial.available() > 0 && (int)out.length() < maxBytes) {
+            int c = Serial.read();
+            if (c < 0) break;
+            out += (char)c;
+        }
+        if ((int)out.length() >= maxBytes) break;
+        if ((int32_t)(millis() - start) >= timeoutMs) break;
+        delay(1);
+    }
+
+    return JS_NewStringLen(ctx, out.c_str(), out.length());
+}
+
 #endif

@@ -38,13 +38,23 @@ JSValue native_i2c_begin(JSContext *ctx, JSValue *this_val, int argc, JSValue *a
 
 JSValue native_i2c_scan(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
     i2c_require_ready(ctx);
-    JSValue arr = JS_NewArray(ctx, 127);
+    // Pinned: JS_SetPropertyUint32() can allocate (the backing store grows), so a
+    // plain local would not survive the loop.
+    JSGCRef arr_ref;
+    JSValue *arr = JS_PushGCRef(ctx, &arr_ref);
+    *arr = JS_NewArray(ctx, 127);
+    if (JS_IsException(*arr)) {
+        JS_PopGCRef(ctx, &arr_ref);
+        return JS_ThrowOutOfMemory(ctx);
+    }
     uint32_t idx = 0;
     for (uint8_t a = 1; a < 127; a++) {
         jsI2CBus->beginTransmission(a);
-        if (jsI2CBus->endTransmission(true) == 0) { JS_SetPropertyUint32(ctx, arr, idx++, JS_NewInt32(ctx, a)); }
+        if (jsI2CBus->endTransmission(true) == 0) {
+            JS_SetPropertyUint32(ctx, *arr, idx++, JS_NewInt32(ctx, a));
+        }
     }
-    return arr;
+    return JS_PopGCRef(ctx, &arr_ref);
 }
 
 JSValue native_i2c_write(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {

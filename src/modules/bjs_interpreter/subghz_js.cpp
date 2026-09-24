@@ -182,4 +182,32 @@ JSValue native_subghzTxEnd(JSContext *ctx, JSValue *this_val, int argc, JSValue 
     return JS_UNDEFINED;
 }
 
+JSValue native_subghzScan(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    // usage: subghz.scan(startFreq?: float, stopFreq?: float, maxLoops?: int)
+    //   frequencies are in MHz, maxLoops -1 means keep scanning until a signal
+    //   is found
+    // returns: string with the captured .sub content, empty string on timeout
+    float startFreq = 300.0f;
+    float stopFreq = 928.0f;
+    int maxLoops = 1;
+
+    if (argc > 0 && JS_IsNumber(ctx, argv[0])) {
+        double v;
+        JS_ToNumber(ctx, &v, argv[0]);
+        startFreq = (float)v;
+    }
+    if (argc > 1 && JS_IsNumber(ctx, argv[1])) {
+        double v;
+        JS_ToNumber(ctx, &v, argv[1]);
+        stopFreq = (float)v;
+    }
+    if (argc > 2 && JS_IsNumber(ctx, argv[2])) JS_ToInt32(ctx, &maxLoops, argv[2]);
+    if (maxLoops == 0) maxLoops = 1;
+    if (startFreq <= 0) startFreq = 300.0f;
+    if (stopFreq <= startFreq) stopFreq = 928.0f;
+
+    String r = rf_scan(startFreq, stopFreq, maxLoops);
+    return JS_NewString(ctx, r.c_str());
+}
+
 #endif

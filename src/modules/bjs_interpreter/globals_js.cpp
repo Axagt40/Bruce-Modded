@@ -299,11 +299,14 @@ JSValue native_require(JSContext *ctx, JSValue *this_val, int argc, JSValue *arg
     if (argc < 1) { return JS_ThrowTypeError(ctx, "require() expects 1 argument"); }
 
     JSCStringBuf name_buf;
-    const char *name = JS_ToCString(ctx, argv[0], &name_buf);
-    if (!name) { return JS_EXCEPTION; }
+    const char *nameRaw = JS_ToCString(ctx, argv[0], &name_buf);
+    if (!nameRaw) { return JS_EXCEPTION; }
+    // Copied: JS_GetGlobalObject() allocates, so a pointer borrowed from
+    // JS_ToCString() could be relocated before it is used as a property name.
+    String name = nameRaw;
 
     JSValue global = JS_GetGlobalObject(ctx);
-    JSValue val = JS_GetPropertyStr(ctx, global, name);
+    JSValue val = JS_GetPropertyStr(ctx, global, name.c_str());
 
     return val;
 }

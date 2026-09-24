@@ -395,6 +395,7 @@ static const JSPropDef js_ir[] = {
     JS_CFUNC_DEF("readRaw", 1, native_irReadRaw),
     JS_CFUNC_DEF("transmitFile", 1, native_irTransmitFile),
     JS_CFUNC_DEF("transmit", 3, native_irTransmit),
+    JS_CFUNC_DEF("transmitRaw", 2, native_irTransmitRaw),
     JS_PROP_END,
 };
 
@@ -424,6 +425,7 @@ const JSPropDef js_subghz[] = {
     JS_CFUNC_DEF("transmit", 4, native_subghzTransmit),
     JS_CFUNC_DEF("read", 1, native_subghzRead),
     JS_CFUNC_DEF("readRaw", 1, native_subghzReadRaw),
+    JS_CFUNC_DEF("scan", 3, native_subghzScan),
     JS_CFUNC_DEF("setFrequency", 1, native_subghzSetFrequency),
     JS_CFUNC_DEF("txSetup", 1, native_subghzTxSetup),
     JS_CFUNC_DEF("txPulses", 1, native_subghzTxPulses),
@@ -439,6 +441,8 @@ const JSPropDef js_serial[] = {
     JS_CFUNC_DEF("readln", 1, native_serialReadln),
     JS_CFUNC_DEF("cmd", 1, native_serialCmd),
     JS_CFUNC_DEF("write", 1, native_serialPrint),
+    JS_CFUNC_DEF("available", 0, native_serialAvailable),
+    JS_CFUNC_DEF("read", 2, native_serialRead),
     JS_PROP_END,
 };
 
@@ -452,6 +456,9 @@ const JSPropDef js_storage[] = {
     JS_CFUNC_DEF("remove", 1, native_storageRemove),
     JS_CFUNC_DEF("mkdir", 1, native_storageMkdir),
     JS_CFUNC_DEF("rmdir", 1, native_storageRmdir),
+    JS_CFUNC_DEF("exists", 1, native_storageExists),
+    JS_CFUNC_DEF("size", 1, native_storageSize),
+    JS_CFUNC_DEF("copy", 3, native_storageCopy),
     JS_CFUNC_DEF("spaceLittleFS", 0, native_storageSpaceLittleFS),
     JS_CFUNC_DEF("spaceSDCard", 0, native_storageSpaceSDCard),
     JS_PROP_END,
@@ -522,6 +529,30 @@ static const JSPropDef js_wifi[] = {
     JS_CFUNC_DEF("httpFetch", 2, native_httpFetch),
     JS_CFUNC_DEF("getMACAddress", 0, native_wifiMACAddress),
     JS_CFUNC_DEF("getIPAddress", 0, native_ipAddress),
+
+    /* attacks (headless, time-bounded) */
+    JS_CFUNC_DEF("deauth", 3, native_wifiDeauth),
+    JS_CFUNC_DEF("deauthAll", 2, native_wifiDeauthAll),
+    JS_CFUNC_DEF("beaconSpam", 3, native_wifiBeaconSpam),
+    JS_CFUNC_DEF("sniffHandshake", 4, native_wifiSniffHandshake),
+
+    /* raw 802.11 injection / capture */
+    JS_CFUNC_DEF("injectPacket", 2, native_wifiInjectPacket),
+    JS_CFUNC_DEF("sendRaw80211", 3, native_wifiSendRaw80211),
+    JS_CFUNC_DEF("captureStart", 2, native_wifiCaptureStart),
+    JS_CFUNC_DEF("captureStop", 1, native_wifiCaptureStop),
+    JS_CFUNC_DEF("getCapturedPackets", 2, native_wifiGetCapturedPackets),
+    JS_CFUNC_DEF("setPromiscuous", 2, native_wifiSetPromiscuous),
+
+    /* captive portal / evil twin (script supplies the page or redirect) */
+    JS_CFUNC_DEF("portal", 3, native_wifiPortal),
+
+    /* application layer injection: DNS answers, HTTP payloads, frame decoding */
+    JS_CFUNC_DEF("injectDns", 5, native_wifiInjectDns),
+    JS_CFUNC_DEF("injectHttp", 5, native_wifiInjectHttp),
+    JS_CFUNC_DEF("injectHttpRedirect", 5, native_wifiInjectHttpRedirect),
+    JS_CFUNC_DEF("injectHtml", 5, native_wifiInjectHtml),
+    JS_CFUNC_DEF("packetInfo", 1, native_wifiPacketInfo),
     JS_PROP_END,
 };
 
@@ -574,6 +605,10 @@ static const JSPropDef js_ble[] = {
     JS_CFUNC_DEF("scan", 1, native_bleScan),
     JS_CFUNC_DEF("advertise", 1, native_bleAdvertise),
     JS_CFUNC_DEF("stopAdvertise", 0, native_bleStopAdvertise),
+
+    /* spam (headless, time-bounded) */
+    JS_CFUNC_DEF("spam", 2, native_bleSpam),
+    JS_CFUNC_DEF("spamModes", 0, native_bleSpamModes),
     JS_PROP_END,
 };
 

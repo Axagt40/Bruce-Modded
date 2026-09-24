@@ -53,4 +53,24 @@ JSValue native_irReadRaw(JSContext *ctx, JSValue *this_val, int argc, JSValue *a
     return JS_NewString(ctx, result.c_str());
 }
 
+JSValue native_irTransmitRaw(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    // usage: ir.transmitRaw(frequency: int, rawData: string)
+    //   frequency: carrier in kHz (38 = 38kHz)
+    //   rawData:   space separated microsecond durations (mark/space pairs)
+    // returns: true when the frame was sent, false on bad input
+    if (argc < 2 || !JS_IsString(ctx, argv[1]))
+        return JS_ThrowTypeError(ctx, "irTransmitRaw(frequency:int, rawData:string)");
+
+    int frequency = 38;
+    if (argc > 0 && JS_IsNumber(ctx, argv[0])) JS_ToInt32(ctx, &frequency, argv[0]);
+    if (frequency <= 0) frequency = 38;
+
+    JSCStringBuf rb;
+    const char *rawData = JS_ToCString(ctx, argv[1], &rb);
+    if (rawData == NULL || rawData[0] == '\0') return JS_NewBool(false);
+
+    sendRawCommand((uint16_t)frequency, String(rawData));
+    return JS_NewBool(true);
+}
+
 #endif

@@ -1,5 +1,6 @@
 from pathlib import Path
 import csv
+import shutil
 from SCons.Script import Import
 
 # Import PlatformIO's SCons environment
@@ -34,6 +35,9 @@ part_bin = build_dir / "partitions.bin"
 app_bin  = build_dir / "firmware.bin"
 
 out_bin  = proj_dir / f"Bruce-{pioenv}.bin"
+# Public release name for the modded distribution. The same merged image is also
+# written here so release tooling and humans agree on a single, stable path.
+release_bin = proj_dir / "Bruce-modded.bin"
 
 # Esptool from PlatformIO + Python executable
 esptool_pkg = senv.PioPlatform().get_package_dir("tool-esptoolpy")
@@ -120,6 +124,11 @@ def _merge_bins_callback(target, source, env):
         except FileNotFoundError:
             size = 0
         print(f"[merge_bin] Success -> {out_bin} ({size} bytes)")
+        try:
+            shutil.copyfile(out_bin, release_bin)
+            print(f"[merge_bin] Release copy -> {release_bin} ({release_bin.stat().st_size} bytes)")
+        except OSError as e:
+            print(f"[merge_bin] Warning: could not write {release_bin}: {e}")
         if ota0_offset:
             if size < (ota0_offset + ota_size):
                 print("[Final bin] Valid bin to upload")
